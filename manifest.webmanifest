@@ -1,0 +1,16 @@
+{
+  "name": "Spine Hunter",
+  "short_name": "Spine Hunter",
+  "description": "Your reading journal: books, genre creatures and a trophy bookcase.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F6F3FB",
+  "theme_color": "#F6F3FB",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

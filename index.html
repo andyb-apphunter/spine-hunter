@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Spine Hunter</title>
+<meta name="description" content="Your reading journal: books, genre creatures and a trophy bookcase.">
+<meta name="theme-color" content="#F6F3FB">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="top">
+  <img src="icons/icon-192.png" alt="" class="logo">
+  <div class="titles"><h1>Spine Hunter</h1><div id="subtitle" class="muted small"></div></div>
+  <button id="install" class="chip hidden" data-action="install">Install</button>
+</header>
+
+<main id="view"></main>
+
+<button id="fab" class="fab" data-action="add" aria-label="Add a book">+</button>
+
+<nav class="tabs">
+  <button data-tab="books" class="on"><span class="ti">📚</span>Books</button>
+  <button data-tab="trophies"><span class="ti">🏆</span>Trophies</button>
+  <button data-tab="stats"><span class="ti">📊</span>Stats</button>
+  <button data-tab="more"><span class="ti">☰</span>More</button>
+</nav>
+
+<div id="sheet-wrap" class="sheet-wrap hidden"><div class="scrim" data-action="close-sheet"></div><section id="sheet" class="sheet"></section></div>
+<div id="screen" class="screen hidden"></div>
+<div id="dialog-wrap" class="dialog-wrap hidden"><div class="dialog" id="dialog"></div></div>
+<div id="toast" class="toast hidden"></div>
+
+<section id="signin" class="signin hidden">
+  <div class="signin-card">
+    <img src="icons/icon-192.png" alt="" class="signin-logo">
+    <h1>Spine Hunter</h1>
+    <p class="muted">Your reading journal, genre creatures and trophy bookcase, on your phone and laptop.</p>
+    <button id="signin-btn" class="google-btn" data-action="signin"><span class="g">G</span> Sign in with Google</button>
+    <p id="signin-msg" class="small" style="min-height:20px"></p>
+    <p class="small muted">Your journal is saved privately to your account, with a copy on each device so it also works offline. <a href="privacy.html">Privacy</a></p>
+  </div>
+</section>
+
+<script src="firebase.js"></script>
+<script src="config.js"></script>
+<script src="data.js"></script>
+<script src="core.js"></script>
+<script src="tools.js"></script>
+<script src="ui.js"></script>
+<script src="creatures.js"></script>
+<script src="more.js"></script>
+<script src="cloud.js"></script>
+</body>
+</html>
