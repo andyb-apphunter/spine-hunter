@@ -236,6 +236,8 @@ textarea.input { min-height: 110px; resize: vertical; }
   #install { position: fixed; top: 30px; right: 560px; }
   .fab { bottom: 28px; right: 32px; }
   #view { max-width: 1400px; margin: 0 auto; padding: 0 16px; }
+  /* no sideways swiping with a mouse: chip rows wrap onto more lines instead of running under the book panel */
+  .scroll-x { flex-wrap: wrap; overflow: visible; }
   .split { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 20px; align-items: start; }
   .split .book-list { padding-bottom: 40px; }
   .pane { position: sticky; top: 12px; background: var(--card); border-radius: 22px; padding: 22px; max-height: calc(100vh - 110px); overflow-y: auto; }

@@ -4,7 +4,7 @@
    Each device keeps an offline copy, so the app works without a connection and catches up later.
    Only you can read or write your own journal (see the Firestore rules in the setup notes). */
 
-const APP_VERSION = "0.9.2";
+const APP_VERSION = "0.9.3";
 const Cloud = { app: null, auth: null, db: null, user: null, unsub: [], ready: false, denied: "" };
 
 function cleanForCloud(o) {

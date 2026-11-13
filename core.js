@@ -202,7 +202,7 @@ function cleanSubjects(items, n = 6) {
   return genreLike.concat(picked.filter(x => !genreLike.includes(x))).slice(0, n).join(", ");
 }
 async function searchOpenLibrary({ title = "", author = "", isbn = "", query = "", limit = 8 } = {}) {
-  const p = new URLSearchParams({ limit, fields: "title,author_name,first_publish_year,publisher,isbn,number_of_pages_median,subject,cover_i" });
+  const p = new URLSearchParams({ limit, fields: "title,author_name,first_publish_year,publisher,isbn,number_of_pages_median,subject,cover_i,cover_edition_key,edition_key" });
   if (isbn) p.set("isbn", isbn); else if (query) p.set("q", query); else { if (title) p.set("title", title); if (author) p.set("author", author); }
   const j = await getJson("https://openlibrary.org/search.json?" + p);
   return (j.docs || []).map(d => {
@@ -211,7 +211,8 @@ async function searchOpenLibrary({ title = "", author = "", isbn = "", query = "
       year: String(d.first_publish_year || ""), publisher: (d.publisher || [""])[0], pages: d.number_of_pages_median || null,
       isbn: isbn || isbns.find(i => i.length === 13) || isbns[0] || "", subjects: cleanSubjects(d.subject || []),
       evidence: (d.subject || []).slice(0, 80).join(" | "),
-      cover_url: d.cover_i ? `https://covers.openlibrary.org/b/id/${d.cover_i}-L.jpg` : "", found_in: "Open Library" };
+      cover_url: d.cover_i ? `https://covers.openlibrary.org/b/id/${d.cover_i}-L.jpg` : "", found_in: "Open Library",
+      all_isbns: isbns.slice(0, 40), olids: [d.cover_edition_key].concat(d.edition_key || []).filter(Boolean).slice(0, 12) };
   });
 }
 async function searchGoogle({ title = "", author = "", isbn = "", query = "", limit = 6 } = {}) {
@@ -281,32 +282,44 @@ async function goodreadsCover(book) {
    3. other editions' ISBNs  4. wider searches (plain keywords, title only, audiobooks, US and UK stores)  5. Goodreads */
 async function* coverCandidates(book) {
   const want = normTitle(book.title), i13 = isbn13(book.isbn), title = searchTitle(book.title), author = firstAuthor(book.authors);
-  const isbns = new Set(), seen = new Set();
+  const surname = (author || "").split(/\s+/).pop() || "";
+  const isbns = new Set(), olids = new Set(), seen = new Set();
   const fresh = u => u && !seen.has(u) && seen.add(u);
   const strict = r => sameBook(book, r);
   const loose = r => titlesMatch(want, r.title) && (!book.authors || !r.authors || authorsMatch(book.authors, r.authors));
   const run = async calls => (await Promise.allSettled(calls)).flatMap(x => x.status === "fulfilled" ? x.value : []);
+  /* every edition of the matching books: their ISBNs (Open Library, Amazon) and Open Library edition pictures */
+  const editions = function* (list, cap = 25) {
+    for (const r of list) {
+      for (const id of r.olids || []) if (!olids.has(id) && olids.size < cap) { olids.add(id); yield `https://covers.openlibrary.org/b/olid/${id}-L.jpg?default=false`; }
+      for (const x of [r.isbn].concat(r.all_isbns || [])) { const i = isbn13(x); if (i && !isbns.has(i) && isbns.size < cap) { isbns.add(i); yield* isbnCovers(i); } }
+    }
+  };
+  // 1. the book's own ISBN
   if (i13) { isbns.add(i13); for (const u of isbnCovers(i13)) if (fresh(u)) yield u; }
   let rs = [];
   if (i13) { rs = await run([searchOpenLibrary({ isbn: i13 }), searchGoogle({ isbn: i13 }), searchApple({ isbn: i13 })]); for (const r of rs) if (fresh(r.cover_url)) yield r.cover_url; }
+  // 2. title and author on Open Library, Google Books and Apple Books
   if (title) {
     const more = await run([searchOpenLibrary({ title, author }), searchGoogle({ title, author }), searchApple({ title, author })]);
     rs = rs.concat(more);
     for (const r of more.filter(strict)) if (fresh(r.cover_url)) yield r.cover_url;
   }
-  const otherEditions = function* (list) {
-    for (const r of list) { const i = isbn13(r.isbn); if (i && !isbns.has(i) && isbns.size < 10) { isbns.add(i); yield* isbnCovers(i); } }
-  };
-  for (const u of otherEditions(rs.filter(strict))) if (fresh(u)) yield u;
-  if (title) {
-    const kw = [title, author].filter(Boolean).join(" ");
-    const wide = await run([searchGoogle({ query: kw, limit: 15 }), searchOpenLibrary({ query: kw, limit: 15 }), searchOpenLibrary({ title, limit: 15 }),
-      searchApple({ title, author, media: "audiobook" }), searchApple({ title, author, country: "us" }), searchApple({ title, author, country: "gb" })]);
-    for (const r of wide.filter(loose)) if (fresh(r.cover_url)) yield r.cover_url;
-    for (const u of otherEditions(wide.filter(loose))) if (fresh(u)) yield u;
-  }
+  // 3. other editions of the same book
+  for (const u of editions(rs.filter(strict))) if (fresh(u)) yield u;
+  if (!title) { const gr = await goodreadsCover(book); if (fresh(gr)) yield gr; return; }
+  // 4. wider: plain keywords, title only, surname only, audiobooks, other countries' stores
+  const kw = [title, author].filter(Boolean).join(" ");
+  const wide = await run([searchGoogle({ query: kw, limit: 20 }), searchGoogle({ query: `${title} ${surname}`, limit: 20 }), searchGoogle({ title, limit: 20 }),
+    searchOpenLibrary({ query: kw, limit: 20 }), searchOpenLibrary({ title, limit: 20 }), searchOpenLibrary({ title, author: surname, limit: 20 }),
+    searchApple({ title, author, media: "audiobook" }), searchApple({ title, author, media: "audiobook", country: "us" }),
+    searchApple({ title, author, country: "us" }), searchApple({ title, author, country: "gb" }), searchApple({ title, author, country: "ca" }), searchApple({ title, author, country: "nz" })]);
+  for (const r of wide.filter(loose)) if (fresh(r.cover_url)) yield r.cover_url;
+  for (const u of editions(wide.filter(loose), 40)) if (fresh(u)) yield u;
+  // 5. Goodreads
   const gr = await goodreadsCover(book);
   if (fresh(gr)) yield gr;
+  if (!gr && author) { const g2 = await goodreadsCover({ title: book.title, authors: "" }); if (fresh(g2)) yield g2; }
 }
 function imageOk(url, ms = 12000) {
   return new Promise(res => {
