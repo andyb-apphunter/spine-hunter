@@ -4,8 +4,8 @@
    Each device keeps an offline copy, so the app works without a connection and catches up later.
    Only you can read or write your own journal (see the Firestore rules in the setup notes). */
 
-const APP_VERSION = "0.9.1";
-const Cloud = { app: null, auth: null, db: null, user: null, unsub: [], ready: false };
+const APP_VERSION = "0.9.2";
+const Cloud = { app: null, auth: null, db: null, user: null, unsub: [], ready: false, denied: "" };
 
 function cleanForCloud(o) {
   // Firestore can't store 'undefined'
@@ -83,6 +83,13 @@ function scheduleRender() {
     render();
   }, 150);
 }
+/* The Firestore rules only let invited Google accounts in. Anyone else is signed straight back out. */
+function notInvited(e) {
+  if (!e || e.code !== "permission-denied" || !Cloud.user) return false;
+  Cloud.denied = Cloud.user.email || "This Google account";
+  FB.signOut(Cloud.auth);
+  return true;
+}
 function startData(user) {
   Cloud.user = user; Cloud.ready = false;
   S.books = []; S.trophies = {}; S.goals = {}; S.settings = {}; S.deleted = {};
@@ -91,12 +98,13 @@ function startData(user) {
   Cloud.unsub.push(FB.onSnapshot(FB.collection(Cloud.db, "users", user.uid, "books"), snap => {
     S.books = snap.docs.map(d => Object.assign(newBook(), d.data(), { uid: d.id }));
     gotBooks = true; firstLoad(); if (Cloud.ready) scheduleRender();
-  }, e => { console.error(e); toast("Couldn't load your books: " + (e.code || e.message)); }));
+  }, e => { console.error(e); if (!notInvited(e)) toast("Couldn't load your books: " + (e.code || e.message)); }));
   Cloud.unsub.push(FB.onSnapshot(metaRef(), snap => {
     const m = snap.exists() ? snap.data() : {};
     S.trophies = m.trophies || {}; S.goals = m.goals || {}; S.settings = m.settings || {};
+    if (S.settings.theme) applyTheme(S.settings.theme);
     gotMeta = true; firstLoad(); if (Cloud.ready) scheduleRender();
-  }, e => console.error(e)));
+  }, e => { console.error(e); notInvited(e); }));
 }
 async function afterFirstLoad() {
   render();
@@ -118,6 +126,8 @@ async function offerOldBooks() {
 
 /* ---------------- start ---------------- */
 function startCloud() {
+  document.querySelectorAll("[data-ver]").forEach(e => { e.textContent = "v" + APP_VERSION; });
+  applyTheme(document.documentElement.dataset.theme || "candy");
   if (!window.FIREBASE_CONFIG || !FIREBASE_CONFIG.apiKey || FIREBASE_CONFIG.apiKey.startsWith("PASTE")) {
     showSignIn("Setup needed: the Firebase settings haven't been added to config.js yet.");
     $("#signin-btn").disabled = true;
@@ -133,7 +143,12 @@ function startCloud() {
   FB.getRedirectResult(Cloud.auth).catch(() => {});
   FB.onAuthStateChanged(Cloud.auth, user => {
     Cloud.unsub.forEach(u => u()); Cloud.unsub = [];
-    if (!user) { Cloud.user = null; S.books = []; closeScreen(); closeSheet(); showSignIn(); render(); return; }
+    if (!user) {
+      Cloud.user = null; S.books = []; closeScreen(); closeSheet(); render();
+      showSignIn(Cloud.denied ? `${Cloud.denied} isn't on the Spine Hunter invite list yet. Ask Andrew to add it, or sign in with a different Google account.` : "");
+      Cloud.denied = "";
+      return;
+    }
     hideSignIn();
     startData(user);
   });

@@ -104,24 +104,6 @@ function applyMatch(book, m, names) {
   book.title = tidyTitle(book.title);
   if (!parseGenres(book.genres).length) book.genres = suggestGenres([m.evidence || "", book.subjects || ""].join(" | "));
 }
-async function findCoverUrl(book) {
-  const tried = new Set(), want = normTitle(book.title), i13 = isbn13(book.isbn);
-  const urls = [];
-  if (i13) urls.push(`https://covers.openlibrary.org/b/isbn/${i13}-L.jpg?default=false`);
-  try {
-    const rs = await findMetadata(i13 ? { isbn: i13 } : { title: searchTitle(book.title), author: firstAuthor(book.authors) });
-    rs.filter(r => r.cover_url && (i13 || (titlesMatch(want, r.title) && authorsMatch(book.authors, r.authors)))).forEach(r => urls.push(r.cover_url));
-    if (i13 && want && urls.length < 2) {
-      const more = await findMetadata({ title: searchTitle(book.title), author: firstAuthor(book.authors) });
-      more.filter(r => r.cover_url && titlesMatch(want, r.title) && authorsMatch(book.authors, r.authors)).forEach(r => urls.push(r.cover_url));
-    }
-  } catch (e) { /* offline */ }
-  for (const u of urls) { if (tried.has(u)) continue; tried.add(u); if (await imageOk(u)) return u.replace("?default=false", ""); }
-  return "";
-}
-function imageOk(url) {
-  return new Promise(res => { const im = new Image(); const t = setTimeout(() => res(false), 12000); im.onload = () => { clearTimeout(t); res(im.naturalWidth > 40 && im.naturalHeight > 40); }; im.onerror = () => { clearTimeout(t); res(false); }; im.src = url; });
-}
 
 /* ---------------- reading import files ---------------- */
 function parseCSV(text) {

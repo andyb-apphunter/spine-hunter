@@ -10,11 +10,12 @@
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="app.css">
+<script>try { var t = localStorage.getItem("sh-theme"); if (t && t !== "candy") document.documentElement.dataset.theme = t; } catch (e) {}</script>
 </head>
 <body>
 <header class="top">
   <img src="icons/icon-192.png" alt="" class="logo">
-  <div class="titles"><h1>Spine Hunter</h1><div id="subtitle" class="muted small"></div></div>
+  <div class="titles"><h1>Spine Hunter<span class="ver" data-ver></span></h1><div id="subtitle" class="muted small"></div></div>
   <button id="install" class="chip hidden" data-action="install">Install</button>
 </header>
 
@@ -37,7 +38,7 @@
 <section id="signin" class="signin hidden">
   <div class="signin-card">
     <img src="icons/icon-192.png" alt="" class="signin-logo">
-    <h1>Spine Hunter</h1>
+    <h1>Spine Hunter<span class="ver" data-ver></span></h1>
     <p class="muted">Your reading journal, genre creatures and trophy bookcase, on your phone and laptop.</p>
     <button id="signin-btn" class="google-btn" data-action="signin"><span class="g">G</span> Sign in with Google</button>
     <p id="signin-msg" class="small" style="min-height:20px"></p>

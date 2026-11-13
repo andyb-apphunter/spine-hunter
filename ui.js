@@ -3,10 +3,33 @@
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const PASTELS = ["#D5E7F8", "#FADDE8", "#DCCFF3"];
+const PASTELS = ["var(--blue)", "var(--pink)", "var(--purple)"];
 const SPINE_COLORS = SHARED.SPINE_COLORS;
 const UI = { trophyView: "bookcase", tab: "books", q: "", status: "All", genre: "", sort: "Default", order: [], period: "This year", selTrophy: null };
 const wide = () => window.innerWidth >= 960;
+
+/* ---------- themes ---------- */
+const THEMES = [
+  ["candy", "Cotton Candy", ["#F6F3FB", "#DCCFF3", "#D5E7F8", "#FADDE8"]],
+  ["mint", "Mint Tea", ["#F1F7F3", "#CDEBD9", "#D9EEF0", "#FDE2D4"]],
+  ["ocean", "Ocean", ["#EFF5FA", "#C9E0F5", "#CDEEF0", "#FCE3E0"]],
+  ["sunset", "Peach Sunset", ["#FDF4EE", "#FBD9C4", "#FCE9C2", "#F9D3DA"]],
+  ["library", "Cosy Library", ["#F5EFE4", "#E8D6BD", "#B98A5E", "#5B4130"]],
+  ["midnight", "Midnight", ["#1E1B2C", "#4A3F78", "#2D4766", "#5C3550"]],
+];
+function applyTheme(key) {
+  if (!THEMES.some(t => t[0] === key)) key = "candy";
+  if (key === "candy") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = key;
+  try { localStorage.setItem("sh-theme", key); } catch (e) { /* private window */ }
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim() || "#F6F3FB";
+}
+function setTheme(key) { applyTheme(key); S.settings.theme = key; saveMeta(); render(); }
+function themePicker() {
+  const cur = S.settings.theme || (document.documentElement.dataset.theme || "candy");
+  return `<div class="themes">${THEMES.map(([k, name, sw]) => `<button class="theme-opt ${k === cur ? "on" : ""}" data-action="theme" data-v="${k}">
+    <span class="sw">${sw.map(c => `<i style="background:${c}"></i>`).join("")}</span>${esc(name)}</button>`).join("")}</div>`;
+}
 
 /* ---------- small building blocks ---------- */
 function stars(n) { n = +n || 0; return n ? "★".repeat(n) + "☆".repeat(5 - n) : ""; }
@@ -255,23 +278,22 @@ async function pickResult(i) {
   }
   toast("Details filled in. Check them, then Save.");
 }
-function imageWorks(url) {
-  return new Promise(res => { const im = new Image(); im.onload = () => res(im.naturalWidth > 40 && im.naturalHeight > 40); im.onerror = () => res(false); im.src = url; });
-}
 async function findCover() {
   readForm();
   const b = E.book;
   if (!b.title && !b.isbn) return notify("Find a cover", "Enter the title (or ISBN) first.");
-  toast("Looking for a cover…", 4000);
-  const tries = [];
-  const i13 = isbn13(b.isbn);
-  if (i13) tries.push(`https://covers.openlibrary.org/b/isbn/${i13}-L.jpg?default=false`);
-  try {
-    const rs = await findMetadata(i13 ? { isbn: i13 } : { title: searchTitle(b.title), author: firstAuthor(b.authors) });
-    rs.filter(r => r.cover_url && (i13 || sameBook(b, r))).forEach(r => tries.push(r.cover_url));
-  } catch (e) { /* offline */ }
-  for (const u of tries) if (await imageWorks(u)) { b.cover_url = u; b.own_cover = null; E.dirty = true; refreshEditBits(); return toast("Cover found."); }
-  notify("No cover found", "None of the book databases has a cover for this one. Add the ISBN and try again, or use your own photo.");
+  toast("Searching Open Library, Google Books, Apple Books, Amazon and Goodreads…", 15000);
+  const choices = await findCoverChoices(b);
+  $("#toast").classList.add("hidden");
+  if (!choices.length) return notify("No cover found", "None of the book databases has a cover for this one. Check the title and author (or add the ISBN) and try again, or use your own photo.");
+  let pick = choices[0];
+  if (choices.length > 1) {
+    pick = await dialog({ title: `${choices.length} covers found`, html: `<p class="small muted" style="margin-top:0">Tap the one that matches your copy.</p>
+      <div class="cover-picks">${choices.map((u, i) => `<button class="${i ? "" : "on"}" data-action="cover-pick" data-u="${esc(u)}"><img src="${esc(u)}" alt=""></button>`).join("")}</div>
+      <input type="hidden" value="${esc(choices[0])}">`, buttons: [["Cancel", false, "btn ghost"], ["Use this cover", "input", "btn"]] });
+    if (!pick) return;
+  }
+  b.cover_url = pick; b.own_cover = null; E.dirty = true; refreshEditBits(); toast("Cover added.");
 }
 function ownPhoto() {
   const inp = document.createElement("input");
@@ -506,6 +528,7 @@ document.addEventListener("click", async e => {
     case "close-sheet": closeSheet(); break;
     case "genre-name": toast(el.dataset.name); break;
     case "creature": openCreature(el.dataset.k); break;
+    case "theme": setTheme(v); break;
     case "trophy-view": UI.trophyView = v; render(); break;
     case "all-creatures": UI.tab = "trophies"; UI.trophyView = "creatures"; closeSheet(); render(); window.scrollTo(0, 0); break;
     case "add": openEdit(null); break;
@@ -519,6 +542,7 @@ document.addEventListener("click", async e => {
     case "scan": startScanner(); break;
     case "pick": pickResult(+el.dataset.i); break;
     case "find-cover": findCover(); break;
+    case "cover-pick": document.querySelectorAll(".cover-picks button").forEach(x => x.classList.toggle("on", x === el)); $("#dialog input").value = el.dataset.u; break;
     case "own-photo": ownPhoto(); break;
     case "genre": { readForm(); const g = new Set(parseGenres(E.book.genres)); g.has(el.dataset.k) ? g.delete(el.dataset.k) : g.add(el.dataset.k); E.book.genres = GENRE_KEYS.filter(k => g.has(k)).join(","); E.dirty = true; refreshEditBits(); break; }
     case "suggest-genres": {

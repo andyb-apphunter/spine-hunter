@@ -234,16 +234,17 @@ async function googleCategories(gid) {
   return (v.categories || []).concat(v.mainCategory ? [v.mainCategory] : []);
 }
 const appleTitle = t => stripSeries(t).replace(/\s*[([][^()[\]]*\b(book|volume|vol\.?|#|part)\s*\d+[^()[\]]*[)\]]\s*$/i, "").trim();
-async function searchApple({ title = "", author = "", isbn = "", query = "", limit = 6 } = {}) {
-  const url = isbn ? `https://itunes.apple.com/lookup?country=au&isbn=${isbn13(isbn) || cleanIsbn(isbn)}`
-    : `https://itunes.apple.com/search?media=ebook&entity=ebook&country=au&limit=${limit}&term=` + encodeURIComponent(query || [title, author].filter(Boolean).join(" "));
+async function searchApple({ title = "", author = "", isbn = "", query = "", limit = 6, media = "ebook", country = "au" } = {}) {
+  const url = isbn ? `https://itunes.apple.com/lookup?country=${country}&isbn=${isbn13(isbn) || cleanIsbn(isbn)}`
+    : `https://itunes.apple.com/search?media=${media}&entity=${media}&country=${country}&limit=${limit}&term=` + encodeURIComponent(query || [title, author].filter(Boolean).join(" "));
   const j = await getJson(url);
-  return (j.results || []).filter(d => d.trackName).slice(0, limit).map(d => {
-    const genres = (d.genres || []).filter(g => g.toLowerCase() !== "books");
-    return { title: d.trackName, main_title: appleTitle(d.trackName), authors: (d.artistName || "").replace(/ & /g, ", "),
+  return (j.results || []).filter(d => d.trackName || d.collectionName).slice(0, limit).map(d => {
+    const name = d.trackName || d.collectionName;
+    const genres = (d.genres || [d.primaryGenreName]).filter(g => g && g.toLowerCase() !== "books" && g.toLowerCase() !== "audiobooks");
+    return { title: name, main_title: appleTitle(name), authors: (d.artistName || "").replace(/ & /g, ", "),
       year: (d.releaseDate || "").slice(0, 4), publisher: "", pages: null, isbn: isbn ? isbn13(isbn) : "",
       subjects: cleanSubjects(genres), evidence: genres.join(" | "),
-      cover_url: (d.artworkUrl100 || "").replace(/\/\d+x\d+bb\./, "/600x600bb."), found_in: "Apple Books" };
+      cover_url: (d.artworkUrl100 || d.artworkUrl60 || "").replace(/\/\d+x\d+bb\./, "/600x600bb."), found_in: media === "audiobook" ? "Apple Books (audiobook)" : "Apple Books" };
   });
 }
 const SOURCES = [searchOpenLibrary, searchGoogle, searchApple];
@@ -254,6 +255,86 @@ async function findMetadata(args) {
   return ok.flatMap(r => r.value);
 }
 const sameBook = (book, r) => { const want = normTitle(book.title); return (!want || titlesMatch(want, r.title)) && authorsMatch(book.authors, r.authors); };
+
+/* ---------------- covers: searched wider and wider until something turns up ---------------- */
+function isbn10of(i13) {
+  if (!/^978\d{10}$/.test(i13 || "")) return "";
+  const core = i13.slice(3, 12), sum = [...core].reduce((t, c, i) => t + (+c) * (10 - i), 0), chk = (11 - sum % 11) % 11;
+  return core + (chk === 10 ? "X" : chk);
+}
+const isbnCovers = i => [`https://covers.openlibrary.org/b/isbn/${i}-L.jpg?default=false`].concat(isbn10of(i) ? [`https://images-na.ssl-images-amazon.com/images/P/${isbn10of(i)}.01.LZZZZZZZ.jpg`] : []);
+async function getJsonTimed(url, ms = 8000) {
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
+  try { const r = await fetch(url, { signal: ctl.signal }); if (!r.ok) throw new Error("HTTP " + r.status); return await r.json(); } finally { clearTimeout(t); }
+}
+/* Goodreads covers, through the free bookcover API (github.com/w3slley/bookcover-api) */
+async function goodreadsCover(book) {
+  const i13 = isbn13(book.isbn), base = "https://bookcover.longitood.com/bookcover";
+  const tries = [];
+  if (i13) tries.push(`${base}?isbn=${i13}`);
+  if (book.title) tries.push(`${base}?book_title=${encodeURIComponent(searchTitle(book.title))}&author_name=${encodeURIComponent(firstAuthor(book.authors) || "")}`);
+  for (const u of tries) { try { const j = await getJsonTimed(u); if (j && j.url) return j.url; } catch (e) { /* not found or unavailable */ } }
+  return "";
+}
+/* Yields possible cover pictures, best guesses first:
+   1. the book's own ISBN (Open Library, Amazon)  2. Open Library, Google Books and Apple Books for this title and author
+   3. other editions' ISBNs  4. wider searches (plain keywords, title only, audiobooks, US and UK stores)  5. Goodreads */
+async function* coverCandidates(book) {
+  const want = normTitle(book.title), i13 = isbn13(book.isbn), title = searchTitle(book.title), author = firstAuthor(book.authors);
+  const isbns = new Set(), seen = new Set();
+  const fresh = u => u && !seen.has(u) && seen.add(u);
+  const strict = r => sameBook(book, r);
+  const loose = r => titlesMatch(want, r.title) && (!book.authors || !r.authors || authorsMatch(book.authors, r.authors));
+  const run = async calls => (await Promise.allSettled(calls)).flatMap(x => x.status === "fulfilled" ? x.value : []);
+  if (i13) { isbns.add(i13); for (const u of isbnCovers(i13)) if (fresh(u)) yield u; }
+  let rs = [];
+  if (i13) { rs = await run([searchOpenLibrary({ isbn: i13 }), searchGoogle({ isbn: i13 }), searchApple({ isbn: i13 })]); for (const r of rs) if (fresh(r.cover_url)) yield r.cover_url; }
+  if (title) {
+    const more = await run([searchOpenLibrary({ title, author }), searchGoogle({ title, author }), searchApple({ title, author })]);
+    rs = rs.concat(more);
+    for (const r of more.filter(strict)) if (fresh(r.cover_url)) yield r.cover_url;
+  }
+  const otherEditions = function* (list) {
+    for (const r of list) { const i = isbn13(r.isbn); if (i && !isbns.has(i) && isbns.size < 10) { isbns.add(i); yield* isbnCovers(i); } }
+  };
+  for (const u of otherEditions(rs.filter(strict))) if (fresh(u)) yield u;
+  if (title) {
+    const kw = [title, author].filter(Boolean).join(" ");
+    const wide = await run([searchGoogle({ query: kw, limit: 15 }), searchOpenLibrary({ query: kw, limit: 15 }), searchOpenLibrary({ title, limit: 15 }),
+      searchApple({ title, author, media: "audiobook" }), searchApple({ title, author, country: "us" }), searchApple({ title, author, country: "gb" })]);
+    for (const r of wide.filter(loose)) if (fresh(r.cover_url)) yield r.cover_url;
+    for (const u of otherEditions(wide.filter(loose))) if (fresh(u)) yield u;
+  }
+  const gr = await goodreadsCover(book);
+  if (fresh(gr)) yield gr;
+}
+function imageOk(url, ms = 12000) {
+  return new Promise(res => {
+    const im = new Image(), t = setTimeout(() => res(false), ms);
+    im.onload = () => { clearTimeout(t); res(im.naturalWidth > 40 && im.naturalHeight > 40); };
+    im.onerror = () => { clearTimeout(t); res(false); };
+    im.src = url;
+  });
+}
+const coverUrlToKeep = u => u.replace("?default=false", "");
+async function findCoverUrl(book) {
+  try { for await (const u of coverCandidates(book)) if (await imageOk(u)) return coverUrlToKeep(u); } catch (e) { /* offline */ }
+  return "";
+}
+/* several working covers to choose from (for Find a cover on one book) */
+async function findCoverChoices(book, max = 9) {
+  const found = [], checks = [];   // [rank, url]: best guesses keep their place in the list
+  try {
+    for await (const u of coverCandidates(book)) {
+      const rank = checks.length;
+      checks.push(imageOk(u, 10000).then(ok => { if (ok) found.push([rank, coverUrlToKeep(u)]); }));
+      if (checks.length % 6 === 0) await Promise.all(checks);
+      if (found.length >= max) break;
+    }
+  } catch (e) { /* offline */ }
+  await Promise.all(checks);
+  return found.sort((a, b) => a[0] - b[0]).slice(0, max).map(x => x[1]);
+}
 async function gatherEvidence(book, results, deep = true) {
   const same = results.filter(r => sameBook(book, r));
   let ev = same.map(r => r.evidence || r.subjects || "").filter(Boolean).join(" | ");

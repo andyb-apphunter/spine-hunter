@@ -68,11 +68,13 @@ function renderMore() {
       <button class="btn blue wide" data-action="guide" data-v="fable">From Fable</button>
       <button class="btn blue wide" data-action="guide" data-v="sheet">From my own spreadsheet</button></div></div></div>
     <div class="pad"><div class="card"><div class="label">Tidy up</div>
-      <p class="small muted">These look your books up on Open Library, Google Books and Apple Books. Your ratings, dates, status and notes are never changed.</p>
+      <p class="small muted">These look your books up on Open Library, Google Books and Apple Books (covers also check Amazon and Goodreads). Your ratings, dates, status and notes are never changed.</p>
       <div class="stack"><button class="btn ghost wide" data-action="tool" data-v="tidy">Tidy up titles and authors (all books)</button>
       <button class="btn ghost wide" data-action="tool" data-v="covers">Find missing covers ${noCover ? `(${noCover})` : ""}</button>
       <button class="btn ghost wide" data-action="tool" data-v="genres">Find genres for books without one ${noGenre ? `(${noGenre})` : ""}</button>
       <button class="btn ghost wide" data-action="tool" data-v="dupes">Find and merge duplicates</button></div></div></div>
+    <div class="pad"><div class="card"><div class="label">Theme</div>
+      <p class="small muted" style="margin-bottom:0">Pick a look. It follows you to every device you sign in on.</p>${themePicker()}</div></div>
     <div class="pad"><div class="card"><div class="label">Account</div>
       <p class="small" style="margin-bottom:4px">Signed in as <b>${esc(Cloud.user ? (Cloud.user.email || Cloud.user.displayName || "you") : "")}</b></p>
       <p class="small muted">Your journal is saved to your account and kept up to date on every device you sign in on. It works offline and catches up when you're back online.</p>
@@ -82,7 +84,7 @@ function renderMore() {
       <div class="stack"><button class="btn ghost wide" data-action="backup">Save a backup file</button>
       <button class="btn ghost wide" data-action="restore">Restore from a backup or sync file</button></div></div></div>
     <div class="pad" style="margin-bottom:24px"><div class="card"><div class="label">About</div>
-      <p class="small muted" style="margin-bottom:0;line-height:1.5">Spine Hunter ${APP_VERSION} (test version) · ${S.books.length} books · ${Object.keys(S.trophies).length} of 100 trophies · <a href="privacy.html">Privacy</a><br>
+      <p class="small muted" style="margin-bottom:0;line-height:1.5"><b>Version ${APP_VERSION}</b> (test version) · ${S.books.length} books · ${Object.keys(S.trophies).length} of 100 trophies · <a href="privacy.html">Privacy</a><br>
       Install it from your browser's menu (Install app / Add to home screen) for its own icon and window.</p></div></div></div>`;
 }
 
