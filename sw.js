@@ -11,7 +11,8 @@ self.addEventListener("fetch", e => {
   const url = new URL(req.url);
   if (url.origin === location.origin) {
     // the app itself: use the network when online so updates arrive, fall back to the saved copy offline
-    e.respondWith(fetch(req).then(r => { const copy = r.clone(); caches.open(VERSION).then(c => c.put(req, copy)); return r; })
+    // no-cache: always ask GitHub whether the file has changed, so a new upload shows on the next open
+    e.respondWith(fetch(req, { cache: "no-cache" }).then(r => { const copy = r.clone(); caches.open(VERSION).then(c => c.put(req, copy)); return r; })
       .catch(() => caches.match(req, { ignoreSearch: true }).then(r => r || caches.match("index.html"))));
   } else if (req.destination === "image") {
     // book covers: keep a copy so they show offline
